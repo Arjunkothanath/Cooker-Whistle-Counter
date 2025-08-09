@@ -939,10 +939,6 @@
               if (whistleCount >= whistleLimit) {
                 playCustomAlert();
                 sendNotification(`Whistle limit reached! (${whistleCount}/${whistleLimit})`, 'Cooker Whistle Counter');
-                // Automatically stop detection after limit is reached to reset statistics
-                setTimeout(() => {
-                  toggleDetectionState(false);
-                }, 2000); // Give 2 seconds for the alarm to be heard
               } else {
                 playBeep();
               }
@@ -992,12 +988,6 @@
         }
         
         mediaStream = null;
-        
-        // Reset statistics when stopping (except custom audio)
-        whistleCount = 0;
-        lastWhistleAt = 0;
-        inWhistle = false;
-        updateCountUI();
         
         // Ensure UI state is correct
         body.classList.remove('alarm-active');
