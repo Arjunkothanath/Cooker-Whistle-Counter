@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cooker Whistle Counter</title>
+  <meta name="description" content="Detect and count pressure cooker whistles using your device microphone." />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #22c55e;
+      --accent-2: #f59e0b;
+      --danger: #ef4444;
+      --btn: #1f2937;
+      --btn-hover: #374151;
+      --ring: rgba(34,197,94,0.35);
+      --whistle-color: #f59e0b;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 700px at 50% -100px, #1f2937, var(--bg));
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      display: grid;
+      place-items: center;
+      overflow-x: hidden;
+      transition: background-color 0.5s ease;
+    }
+    
+    body.alarm-active {
+      background: #3c0c0c;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 800px;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #22c55e33, #22c55e08);
+      outline: 1px solid #22c55e22;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    h1 { font-size: 1.25rem; margin: 0; }
+    p { color: var(--muted); margin: 0; }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border: 1px solid rgba(148,163,184,0.15);
+      border-radius: 16px;
+      padding: 20px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    
+    .card.limit-reached {
+      border-color: rgba(239,68,68,0.45);
+      animation: danger-pulse 1s ease-in-out infinite;
+      background: linear-gradient(180deg, rgba(239,68,68,0.08), rgba(239,68,68,0.04));
+    }
+    
+    @keyframes danger-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+      50% { box-shadow: 0 0 0 10px rgba(239,68,68,0); }
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+      transition: left 0.5s;
+      pointer-events: none;
+    }
+
+    .card:hover::before {
+      left: 100%;
+    }
+
+    .counter {
+      display: grid;
+      gap: 12px;
+      align-items: center;
+      justify-items: center;
+      padding: 24px 12px 12px;
+      position: relative;
+    }
+
+    .count {
+      font-size: clamp(48px, 14vw, 120px);
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 2px;
+      color: #ffffff;
+      text-shadow: 0 10px 30px rgba(34,197,94,0.25);
+      transition: all 0.3s ease;
+    }
+
+    .count.whistle-detected {
+      animation: pop 0.3s ease-out;
+      transform: scale(1.1);
+      color: var(--whistle-color);
+    }
+    
+    @keyframes pop {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.15); }
+      100% { transform: scale(1.1); }
+    }
+
+    .count.limit-reached {
+      color: var(--danger);
+      text-shadow: 0 10px 30px rgba(239,68,68,0.5);
+      animation: shake 0.5s ease-in-out;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+
+    .status {
+      min-height: 24px;
+      font-size: 0.95rem;
+      color: var(--muted);
+      text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s ease;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--muted);
+      transition: all 0.3s ease;
+    }
+    
+    .status.running .status-dot {
+      background-color: var(--accent);
+      animation: status-pulse 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes status-pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.5); opacity: 0.5; }
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(148,163,184,0.25);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      color: var(--text);
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+      transition: left 0.3s;
+    }
+
+    button:hover::before {
+      left: 100%;
+    }
+
+    button:hover { 
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+      border-color: rgba(148,163,184,0.45);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    }
+
+    button:active { transform: translateY(0) scale(0.98); }
+    
+    .toggle-btn {
+      border-color: rgba(34,197,94,0.45);
+      background: linear-gradient(180deg, rgba(34,197,94,0.2), rgba(34,197,94,0.1));
+      box-shadow: 0 0 0 0 rgba(34,197,94,0.0);
+    }
+    
+    .toggle-btn:hover { box-shadow: 0 0 0 4px var(--ring); }
+    .toggle-btn.running {
+      border-color: rgba(239,68,68,0.45);
+      background: linear-gradient(180deg, rgba(239,68,68,0.2), rgba(239,68,68,0.1));
+      color: var(--danger);
+    }
+    .toggle-btn.running:hover { box-shadow: 0 0 0 4px rgba(239,68,68,0.35); }
+
+    details.settings {
+      margin-top: 16px;
+      border-top: 1px dashed rgba(148,163,184,0.25);
+      padding-top: 12px;
+    }
+
+    details.settings > summary {
+      cursor: pointer;
+      user-select: none;
+      color: var(--muted);
+      font-weight: 600;
+      outline: none;
+      transition: color 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    details.settings > summary:hover {
+      color: var(--text);
+    }
+    
+    .summary-icon {
+      transition: transform 0.2s ease;
+    }
+    details.settings[open] .summary-icon {
+      transform: rotate(90deg);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      position: relative;
+    }
+
+    label { font-size: 0.9rem; color: var(--muted); }
+
+    input[type="number"], input[type="file"] {
+      width: 100%;
+      padding: 12px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(148,163,184,0.25);
+      background: rgba(2,6,23,0.45);
+      color: var(--text);
+      font-size: 1rem;
+      transition: all 0.2s ease;
+    }
+
+    input[type="number"]:focus, input[type="file"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(34,197,94,0.2);
+    }
+
+    .limit-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: rgba(245,158,11,0.1);
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      width: 100%;
+    }
+    
+    .limit-reached .limit-indicator {
+      background: rgba(239,68,68,0.15);
+      border-color: rgba(239,68,68,0.4);
+    }
+    
+    .limit-reached .limit-indicator .progress-bar {
+      background: linear-gradient(90deg, var(--danger), #f87171);
+    }
+
+    .limit-indicator .progress {
+      flex: 1;
+      height: 6px;
+      background: rgba(245,158,11,0.2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .limit-indicator .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-2), #fbbf24);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .footnote {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    
+    .help-text {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .legend {
+      margin-top: 8px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.25);
+      background: rgba(255,255,255,0.03);
+      transition: all 0.2s ease;
+    }
+
+    .badge:hover {
+      background: rgba(255,255,255,0.08);
+      transform: translateY(-1px);
+    }
+
+    .dot {
+      width: 8px; height: 8px; border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 2px rgba(34,197,94,0.25);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+
+    @media (max-width: 520px) {
+      .controls { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container" role="main">
+    <header>
+      <div class="title" aria-describedby="subtitle">
+        <div class="logo" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v9a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-9a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4Zm-2 6V6a2 2 0 1 1 4 0v2h-4Z" fill="#22c55e"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Cooker Whistle Counter</h1>
+          <p id="subtitle">Counts pressure cooker whistles using your microphone.</p>
+        </div>
+      </div>
+    </header>
+
+    <section class="card" aria-live="polite">
+      <div class="counter">
+        <div class="count" id="count" aria-atomic="true" aria-live="assertive">0</div>
+        <div class="status" id="status"><span class="status-dot"></span>Microphone idle</div>
+        <div class="limit-indicator" id="limitIndicator" style="display: none;">
+          <span>Limit: <span id="currentLimit">0</span></span>
+          <div class="progress">
+            <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span class="badge"><span class="dot" aria-hidden="true"></span> Real‑time detection</span>
+          <span class="badge">Offline • No data leaves your device</span>
+        </div>
+      </div>
+
+      <div class="controls" role="group" aria-label="Detection controls">
+        <button id="toggleBtn" class="toggle-btn" type="button">Start</button>
+      </div>
+
+      <details class="settings">
+        <summary>
+          <svg class="summary-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.89 12L7.54 15.35a.5.5 0 0 0 0 .71l.71.7a.5.5 0 0 0 .71 0l4.35-4.35a.5.5 0 0 0 0-.71l-4.35-4.35a.5.5 0 0 0-.71 0l-.71.7a.5.5 0 0 0 0 .71L10.89 12Z"/></svg>
+          Settings
+        </summary>
+        <div class="grid" style="margin-top: 10px;">
+          <div class="field">
+            <label for="minFreq">Min frequency (Hz)</label>
+            <input id="minFreq" type="number" min="50" max="10000" step="10" value="5000" />
+            <p class="help-text">Lowest frequency to listen for.</p>
+          </div>
+          <div class="field">
+            <label for="maxFreq">Max frequency (Hz)</label>
+            <input id="maxFreq" type="number" min="50" max="12000" step="10" value="6000" />
+            <p class="help-text">Highest frequency to listen for.</p>
+          </div>
+          <div class="field">
+            <label for="debounceMs">Debounce (ms)</label>
+            <input id="debounceMs" type="number" min="0" max="10000" step="50" value="1000" />
+            <p class="help-text">Time to wait between whistles.</p>
+          </div>
+          <div class="field">
+            <label for="whistleLimit">Whistle Limit</label>
+            <input id="whistleLimit" type="number" min="1" max="100" step="1" value="5" />
+            <p class="help-text">Number of whistles before alarm.</p>
+          </div>
+          <div class="field">
+            <label for="customAudio">Custom Alert Audio</label>
+            <input id="customAudio" type="file" accept="audio/*" />
+            <p class="help-text">Plays a custom sound when limit is reached.</p>
+          </div>
+          <div class="field">
+            <label class="sr-only" for="resetBtn">Reset counter</label>
+            <button id="resetBtn" type="button" style="width: 100%; border-color: rgba(245,158,11,0.45);">Reset Counter</button>
+            <p class="help-text">Shortcut: 'r'</p>
+          </div>
+        </div>
+        <p class="footnote">Tip: Adjust frequency range or debounce if your cooker's whistle is missed or over-counted.</p>
+      </details>
+    </section>
+
+    <p class="footnote" style="text-align:center; max-width: 60ch; margin-inline: auto;">
+      This app uses your microphone to analyze sound locally in the browser via the Web Audio API. Grant microphone permission to start. Notifications are optional.
+    </p>
+  </main>
+
+  <script>
+    (function() {
+      'use strict';
+
+      // ---------- DOM references ----------
+      const countEl = document.getElementById('count');
+      const statusEl = document.getElementById('status');
+      const toggleBtn = document.getElementById('toggleBtn');
+      const minFreqInput = document.getElementById('minFreq');
+      const maxFreqInput = document.getElementById('maxFreq');
+      const debounceMsInput = document.getElementById('debounceMs');
+      const resetBtn = document.getElementById('resetBtn');
+      const whistleLimitInput = document.getElementById('whistleLimit');
+      const customAudioInput = document.getElementById('customAudio');
+      const limitIndicator = document.getElementById('limitIndicator');
+      const currentLimitEl = document.getElementById('currentLimit');
+      const progressBar = document.getElementById('progressBar');
+      const body = document.body;
+
+      // ---------- State ----------
+      let audioContext = null;
+      let analyserNode = null;
+      let mediaStream = null;
+      let mediaSourceNode = null;
+      let animationFrameId = null;
+      let customAudioBuffer = null;
+      let customAudioSource = null;
+      let alarmInterval = null;
+      let isAlarmPlaying = false;
+      let isRunning = false;
+
+      let frequencyData = null;
+      let inWhistle = false;
+      let lastWhistleAt = 0;
+      let whistleCount = 0;
+      let whistleLimit = 5;
+
+      // Settings with defaults
+      let settings = {
+        minFrequencyHz: 5000,
+        maxFrequencyHz: 6000,
+        debounceMs: 1000
+      };
+
+      // Restore persisted count and limit
+      try {
+        const saved = localStorage.getItem('cwc:count');
+        if (saved != null) {
+          whistleCount = Number(saved) || 0;
+        }
+        const savedLimit = localStorage.getItem('cwc:limit');
+        if (savedLimit != null) {
+          whistleLimit = Number(savedLimit) || 5;
+          whistleLimitInput.value = String(whistleLimit);
+        }
+      } catch (_) { /* ignore */ }
+      updateCountUI();
+
+      // ---------- Utility: UI helpers ----------
+      function updateCountUI() {
+        countEl.textContent = String(whistleCount);
+        countEl.classList.toggle('limit-reached', whistleCount >= whistleLimit);
+        
+        const card = document.querySelector('.card');
+        if (card) {
+          card.classList.toggle('limit-reached', whistleCount >= whistleLimit);
+        }
+        
+        body.classList.toggle('alarm-active', whistleCount >= whistleLimit);
+        
+        // Update progress bar
+        if (whistleLimit > 0) {
+          const progress = Math.min((whistleCount / whistleLimit) * 100, 100);
+          progressBar.style.width = `${progress}%`;
+          currentLimitEl.textContent = String(whistleLimit);
+          limitIndicator.style.display = 'flex';
+        } else {
+          limitIndicator.style.display = 'none';
+        }
+
+        // Stop alarm if count goes below limit
+        if (whistleCount < whistleLimit && isAlarmPlaying) {
+          stopAlarm();
+        }
+
+        try { localStorage.setItem('cwc:count', String(whistleCount)); } catch (_) {}
+      }
+
+      function setStatus(text, isRunning) {
+        statusEl.textContent = text;
+        statusEl.classList.toggle('running', isRunning);
+      }
+      
+      function flashCount() {
+        countEl.classList.add('whistle-detected');
+        setTimeout(() => countEl.classList.remove('whistle-detected'), 300);
+      }
+
+      function toggleDetectionState(state) {
+        isRunning = state;
+        toggleBtn.textContent = isRunning ? 'Stop' : 'Start';
+        toggleBtn.classList.toggle('running', isRunning);
+        if (!isRunning) {
+          stopDetection();
+        } else {
+          startDetection();
+        }
+      }
+
+      // ---------- Audio handling ----------
+      async function loadCustomAudio(file) {
+        if (!file) {
+          clearCustomAudio();
+          return;
+        }
+        
+        try {
+          if (!audioContext || audioContext.state === 'closed') {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+          
+          const arrayBuffer = await file.arrayBuffer();
+          
+          let audioBuffer;
+          try {
+            audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          } catch (decodeError) {
+            audioBuffer = await new Promise((resolve, reject) => {
+              audioContext.decodeAudioData(arrayBuffer, resolve, reject);
+            });
+          }
+          
+          customAudioBuffer = audioBuffer;
+          console.log('Custom audio loaded successfully:', file.name, 'Duration:', audioBuffer.duration, 'seconds');
+        } catch (error) {
+          console.error('Failed to load custom audio:', error);
+          alert('Failed to load audio file. Please make sure it\'s a valid audio format (MP3, WAV, etc.).');
+        }
+      }
+
+      function clearCustomAudio() {
+        customAudioBuffer = null;
+        if (customAudioSource) {
+          try {
+            customAudioSource.stop();
+          } catch (_) {}
+          customAudioSource = null;
+        }
+        stopAlarm();
+        console.log('Custom audio cleared');
+      }
+
+      function playCustomAlert() {
+        if (!audioContext || !customAudioBuffer) {
+          playBeep();
+          return;
+        }
+
+        try {
+          if (audioContext.state === 'suspended') {
+            audioContext.resume();
+          }
+          
+          if (customAudioSource) {
+            try {
+              customAudioSource.stop();
+            } catch (_) {}
+            customAudioSource = null;
+          }
+          
+          customAudioSource = audioContext.createBufferSource();
+          const gainNode = audioContext.createGain();
+          const compressor = audioContext.createDynamicsCompressor();
+          
+          compressor.threshold.value = -50;
+          compressor.knee.value = 40;
+          compressor.ratio.value = 12;
+          compressor.attack.value = 0;
+          compressor.release.value = 0.25;
+          
+          customAudioSource.buffer = customAudioBuffer;
+          customAudioSource.connect(gainNode);
+          gainNode.connect(compressor);
+          compressor.connect(audioContext.destination);
+          
+          gainNode.gain.setValueAtTime(1.0, audioContext.currentTime);
+          customAudioSource.start();
+          
+          if (whistleCount >= whistleLimit && !isAlarmPlaying) {
+            isAlarmPlaying = true;
+            if (alarmInterval) {
+              clearInterval(alarmInterval);
+            }
+            const audioDuration = customAudioBuffer.duration;
+            const repeatInterval = Math.min(Math.max(audioDuration * 1000, 1000), 15000);
+            
+            alarmInterval = setInterval(() => {
+              if (whistleCount >= whistleLimit && audioContext) {
+                try {
+                  if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                  }
+                  
+                  if (customAudioSource) {
+                    try {
+                      customAudioSource.stop();
+                    } catch (_) {}
+                  }
+                  
+                  const repeatSource = audioContext.createBufferSource();
+                  const repeatGain = audioContext.createGain();
+                  const repeatCompressor = audioContext.createDynamicsCompressor();
+                  
+                  repeatCompressor.threshold.value = -50;
+                  repeatCompressor.knee.value = 40;
+                  repeatCompressor.ratio.value = 12;
+                  repeatCompressor.attack.value = 0;
+                  repeatCompressor.release.value = 0.25;
+                  
+                  repeatSource.buffer = customAudioBuffer;
+                  repeatSource.connect(repeatGain);
+                  repeatGain.connect(repeatCompressor);
+                  repeatCompressor.connect(audioContext.destination);
+                  
+                  repeatGain.gain.setValueAtTime(1.0, audioContext.currentTime);
+                  repeatSource.start();
+                  
+                  customAudioSource = repeatSource;
+                } catch (error) {
+                  console.error('Failed to play repeating alarm:', error);
+                }
+              } else {
+                stopAlarm();
+              }
+            }, repeatInterval);
+          }
+        } catch (error) {
+          console.error('Failed to play custom audio:', error);
+          playBeep();
+        }
+      }
+
+      function playBeep() {
+        if (!audioContext) return;
+        
+        try {
+          if (audioContext.state === 'suspended') {
+            audioContext.resume();
+          }
+          
+          const durationSec = 0.15;
+          const oscillator = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+
+          oscillator.type = 'sine';
+          oscillator.frequency.value = 880;
+
+          const now = audioContext.currentTime;
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(1.0, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSec);
+
+          oscillator.connect(gain).connect(audioContext.destination);
+          oscillator.start(now);
+          oscillator.stop(now + durationSec + 0.01);
+          
+          if (whistleCount >= whistleLimit && !isAlarmPlaying) {
+            isAlarmPlaying = true;
+            if (alarmInterval) {
+              clearInterval(alarmInterval);
+            }
+            
+            alarmInterval = setInterval(() => {
+              if (whistleCount >= whistleLimit && audioContext) {
+                try {
+                  if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                  }
+                  
+                  const repeatOsc = audioContext.createOscillator();
+                  const repeatGain = audioContext.createGain();
+                  
+                  repeatOsc.type = 'sine';
+                  repeatOsc.frequency.value = 880;
+                  
+                  const repeatNow = audioContext.currentTime;
+                  repeatGain.gain.setValueAtTime(0.0001, repeatNow);
+                  repeatGain.gain.exponentialRampToValueAtTime(1.0, repeatNow + 0.01);
+                  repeatGain.gain.exponentialRampToValueAtTime(0.0001, repeatNow + durationSec);
+                  
+                  repeatOsc.connect(repeatGain).connect(audioContext.destination);
+                  repeatOsc.start(repeatNow);
+                  repeatOsc.stop(repeatNow + durationSec + 0.01);
+                } catch (error) {
+                  console.error('Failed to play repeating beep:', error);
+                }
+              } else {
+                stopAlarm();
+              }
+            }, 800);
+          }
+        } catch (error) {
+          console.error('Failed to play beep:', error);
+        }
+      }
+
+      function stopAlarm() {
+        if (alarmInterval) {
+          clearInterval(alarmInterval);
+          alarmInterval = null;
+        }
+        isAlarmPlaying = false;
+        
+        if (customAudioSource) {
+          try {
+            customAudioSource.stop();
+          } catch (_) {}
+          customAudioSource = null;
+        }
+      }
+
+      // ---------- Detection: frequency helpers ----------
+      function hzToBinIndex(hz, sampleRate, fftSize) {
+        const binFrequency = sampleRate / fftSize;
+        let index = Math.round(hz / binFrequency);
+        const maxIndex = (fftSize / 2) - 1;
+        if (index < 0) index = 0;
+        if (index > maxIndex) index = maxIndex;
+        return index;
+      }
+
+      function isWhistlePresent(sampleRate, fftSize, data) {
+        const iMin = hzToBinIndex(settings.minFrequencyHz, sampleRate, fftSize);
+        const iMax = hzToBinIndex(settings.maxFrequencyHz, sampleRate, fftSize);
+
+        let peakDbInBand = -Infinity;
+        let sumDbAll = 0;
+        let countAll = data.length;
+
+        for (let i = 0; i < data.length; i++) {
+          const db = data[i];
+          sumDbAll += db;
+          if (i >= iMin && i <= iMax) {
+            if (db > peakDbInBand) peakDbInBand = db;
+          }
+        }
+
+        const avgAll = sumDbAll / countAll;
+        const absoluteThresholdDb = -65;
+        const relativeLiftDb = 12;
+
+        const passesAbsolute = peakDbInBand > absoluteThresholdDb;
+        const passesRelative = (peakDbInBand - avgAll) > relativeLiftDb;
+
+        return passesAbsolute && passesRelative;
+      }
+
+      // ---------- Start / Stop detection ----------
+      async function startDetection() {
+        if (analyserNode && mediaSourceNode) return;
+
+        settings.minFrequencyHz = clampNumber(parseFloat(minFreqInput.value), 50, 20000, 5000);
+        settings.maxFrequencyHz = clampNumber(parseFloat(maxFreqInput.value), 50, 22050, 6000);
+        settings.debounceMs = clampNumber(parseInt(debounceMsInput.value, 10), 0, 20000, 1000);
+        whistleLimit = clampNumber(parseInt(whistleLimitInput.value, 10), 1, 100, 5);
+        
+        if (settings.maxFrequencyHz < settings.minFrequencyHz) {
+          settings.maxFrequencyHz = settings.minFrequencyHz + 100;
+          maxFreqInput.value = String(settings.maxFrequencyHz);
+        }
+
+        try {
+          localStorage.setItem('cwc:limit', String(whistleLimit));
+        } catch (_) {}
+        
+        setStatus('Requesting microphone…', false);
+
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false
+            }
+          });
+        } catch (err) {
+          toggleDetectionState(false);
+          setStatus('Microphone permission denied or unavailable.', false);
+          console.error(err);
+          return;
+        }
+
+        try {
+          if (!audioContext || audioContext.state === 'closed') {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          
+          mediaSourceNode = audioContext.createMediaStreamSource(mediaStream);
+          analyserNode = audioContext.createAnalyser();
+
+          analyserNode.fftSize = 4096;
+          analyserNode.smoothingTimeConstant = 0.2;
+          analyserNode.minDecibels = -100;
+          analyserNode.maxDecibels = -30;
+
+          frequencyData = new Float32Array(analyserNode.frequencyBinCount);
+          mediaSourceNode.connect(analyserNode);
+
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+        } catch (err) {
+          console.error(err);
+          setStatus('Audio initialization failed.', false);
+          stopDetection();
+          return;
+        }
+
+        ensureNotificationPermissionIfPossible().catch(() => {});
+
+        setStatus('Listening…', true);
+        inWhistle = false;
+        updateCountUI();
+
+        const loop = () => {
+          if (!analyserNode || !audioContext) return;
+          analyserNode.getFloatFrequencyData(frequencyData);
+
+          const sampleRate = audioContext.sampleRate;
+          const fftSize = analyserNode.fftSize;
+          const whistleNow = isWhistlePresent(sampleRate, fftSize, frequencyData);
+          const now = performance.now();
+
+          if (whistleNow && !inWhistle) {
+            const sinceLast = now - lastWhistleAt;
+            if (sinceLast >= settings.debounceMs) {
+              lastWhistleAt = now;
+              whistleCount += 1;
+              updateCountUI();
+              flashCount();
+              
+              if (whistleCount >= whistleLimit) {
+                playCustomAlert();
+                sendNotification(`Whistle limit reached! (${whistleCount}/${whistleLimit})`, 'Cooker Whistle Counter');
+              } else {
+                playBeep();
+              }
+              
+              if (navigator.vibrate) {
+                try { navigator.vibrate(80); } catch (_) {}
+              }
+              
+              setStatus(`Listening… (last at ${new Date().toLocaleTimeString()})`, true);
+            }
+          }
+
+          inWhistle = whistleNow;
+          animationFrameId = requestAnimationFrame(loop);
+        };
+
+        animationFrameId = requestAnimationFrame(loop);
+      }
+
+      function stopDetection() {
+        setStatus('Microphone idle', false);
+        stopAlarm();
+
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = null;
+        }
+
+        try {
+          if (mediaStream) {
+            mediaStream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
+          }
+        } catch (_) {}
+
+        try { if (mediaSourceNode) mediaSourceNode.disconnect(); } catch (_) {}
+        try { if (analyserNode) analyserNode.disconnect(); } catch (_) {}
+
+        mediaSourceNode = null;
+        analyserNode = null;
+        frequencyData = null;
+
+        if (audioContext && !customAudioBuffer) {
+          if (typeof audioContext.close === 'function') {
+            audioContext.close().catch(() => {});
+          }
+          audioContext = null;
+        }
+        
+        mediaStream = null;
+        
+        // Ensure UI state is correct
+        body.classList.remove('alarm-active');
+        const card = document.querySelector('.card');
+        if (card) {
+          card.classList.remove('limit-reached');
+        }
+      }
+
+      function clampNumber(value, min, max, fallback) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.min(max, Math.max(min, n));
+      }
+
+      // ---------- Permission: Notifications ----------
+      async function ensureNotificationPermissionIfPossible() {
+        if (!('Notification' in window)) return 'unsupported';
+        if (Notification.permission === 'granted') return 'granted';
+        if (Notification.permission === 'denied') return 'denied';
+        try {
+          const perm = await Notification.requestPermission();
+          return perm;
+        } catch (_) {
+          return 'error';
+        }
+      }
+
+      function sendNotification(title, body) {
+        if (!('Notification' in window)) return;
+        if (Notification.permission !== 'granted') return;
+        try {
+          const n = new Notification(title, { body });
+          setTimeout(() => n.close && n.close(), 4000);
+        } catch (_) { /* ignore */ }
+      }
+
+      // ---------- Event listeners ----------
+      toggleBtn.addEventListener('click', () => {
+        toggleDetectionState(!isRunning);
+      });
+
+      resetBtn.addEventListener('click', () => {
+        whistleCount = 0;
+        updateCountUI();
+        stopAlarm();
+        toggleDetectionState(false); // Reset the toggle button state
+      });
+
+      customAudioInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        loadCustomAudio(file);
+      });
+
+      whistleLimitInput.addEventListener('change', () => {
+        whistleLimit = clampNumber(parseInt(whistleLimitInput.value, 10), 1, 100, 5);
+        try {
+          localStorage.setItem('cwc:limit', String(whistleLimit));
+        } catch (_) {}
+        updateCountUI();
+        
+        if (isRunning) {
+          stopDetection();
+          setTimeout(() => {
+            startDetection();
+          }, 100);
+        }
+      });
+      
+      const restartDetectionOnSettingChange = () => {
+        if (isRunning) {
+          stopDetection();
+          setTimeout(() => {
+            startDetection();
+          }, 100);
+        }
+      };
+
+      minFreqInput.addEventListener('change', () => {
+        settings.minFrequencyHz = clampNumber(parseFloat(minFreqInput.value), 50, 20000, 5000);
+        if (settings.maxFrequencyHz < settings.minFrequencyHz) {
+          settings.maxFrequencyHz = settings.minFrequencyHz + 100;
+          maxFreqInput.value = String(settings.maxFrequencyHz);
+        }
+        restartDetectionOnSettingChange();
+      });
+
+      maxFreqInput.addEventListener('change', () => {
+        settings.maxFrequencyHz = clampNumber(parseFloat(maxFreqInput.value), 50, 22050, 6000);
+        if (settings.maxFrequencyHz < settings.minFrequencyHz) {
+          settings.minFrequencyHz = settings.maxFrequencyHz - 100;
+          minFreqInput.value = String(settings.minFrequencyHz);
+        }
+        restartDetectionOnSettingChange();
+      });
+
+      debounceMsInput.addEventListener('change', () => {
+        settings.debounceMs = clampNumber(parseInt(debounceMsInput.value, 10), 0, 20000, 1000);
+        restartDetectionOnSettingChange();
+      });
+
+      window.addEventListener('pagehide', () => {
+        stopAlarm();
+        stopDetection();
+      });
+      window.addEventListener('beforeunload', () => {
+        stopAlarm();
+        stopDetection();
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+        if (e.key === 's') toggleDetectionState(true);
+        else if (e.key === 'x') toggleDetectionState(false);
+        else if (e.key === 'r') resetBtn.click();
+      });
+      
+      // Update UI on initial load
+      updateCountUI();
+      setStatus('Microphone idle', false);
+
+    })();
+  </script>
+</body>
+</html>
